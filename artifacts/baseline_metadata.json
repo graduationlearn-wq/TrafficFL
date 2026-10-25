@@ -1,0 +1,14 @@
+{
+  "dataset": "METR-LA",
+  "dataset_md5": "7c463fcbd28ecc6c9cd93e1ca120aaaa",
+  "rows": 34272,
+  "sensors": 207,
+  "unavailable_readings_percent": 8.109350825676486,
+  "train_windows_used": 1200,
+  "validation_windows_used": 1200,
+  "test_windows_used": 1200,
+  "epochs": 3,
+  "seed": 42,
+  "device": "cpu",
+  "best_validation_masked_mae_normalized": 0.3972666137164295
+}

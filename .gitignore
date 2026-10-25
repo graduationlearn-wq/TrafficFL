@@ -205,3 +205,44 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# TrafficFL Specific
+# Data & Models (large files, generated locally)
+backend/data/
+backend/logs/
+backend/models/
+*.pt
+*.pth
+*.onnx
+
+# Kafka & Docker
+docker_kafka_data/
+docker_zookeeper_data/
+.env
+.env.local
+
+# Jupyter notebooks (optional - remove if you want to commit them)
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/raw/
+artifacts/*.pt
+artifacts/*.pth
+artifacts/*.npz
