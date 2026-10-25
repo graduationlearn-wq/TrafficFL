@@ -246,3 +246,6 @@ data/raw/
 artifacts/*.pt
 artifacts/*.pth
 artifacts/*.npz
+artifacts/*.pt
+artifacts/*.csv
+artifacts/*.json
