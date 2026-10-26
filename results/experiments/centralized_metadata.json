@@ -1,0 +1,22 @@
+{
+  "dataset": "METR-LA",
+  "dataset_md5": "7c463fcbd28ecc6c9cd93e1ca120aaaa",
+  "rows": 34272,
+  "sensors": 207,
+  "unavailable_readings_percent": 8.109350825676486,
+  "train_windows_used": 23967,
+  "validation_windows_used": 3404,
+  "test_windows_used": 6832,
+  "max_epochs": 50,
+  "epochs_run": 32,
+  "best_epoch": 25,
+  "early_stopping_patience": 7,
+  "lr_patience": 2,
+  "initial_learning_rate": 0.001,
+  "batch_windows": 16,
+  "seed": 42,
+  "device": "cpu",
+  "best_validation_masked_mae_normalized": 0.3743195950292294,
+  "training_windows_limited": false,
+  "evaluation_windows_limited": false
+}
