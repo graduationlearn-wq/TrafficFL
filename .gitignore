@@ -249,3 +249,11 @@ artifacts/*.npz
 artifacts/*.pt
 artifacts/*.csv
 artifacts/*.json
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/raw/
+artifacts/*.pt
+artifacts/*.csv
+artifacts/*.json
