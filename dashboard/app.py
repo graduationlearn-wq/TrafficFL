@@ -1,8 +1,11 @@
 
 from __future__ import annotations
 
+import html
 import json
 from pathlib import Path
+from textwrap import dedent
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -22,18 +25,23 @@ from fedroad.data import (
 from fedroad.model import SensorLevelGRU
 
 
-# ---------------------------------------------------------
-# Paths and application settings
-# ---------------------------------------------------------
+# ============================================================
+# 1. CONFIGURATION
+# ============================================================
 
 ROOT = Path(__file__).resolve().parents[1]
+
 ARTIFACTS = ROOT / "artifacts"
 RESULTS = ROOT / "results" / "experiments"
 
-COMPARISON_PATH = RESULTS / "model_comparison.csv"
-ROUND_PATH = RESULTS / "fedavg_round_metrics.csv"
 CENTRAL_MODEL_PATH = ARTIFACTS / "centralized_sensor_gru.pt"
 FED_MODEL_PATH = ARTIFACTS / "fedavg_sensor_gru.pt"
+
+COMPARISON_PATH = RESULTS / "model_comparison.csv"
+ROUND_PATH = RESULTS / "fedavg_round_metrics.csv"
+
+CENTRAL_METADATA_PATH = RESULTS / "centralized_metadata.json"
+FED_METADATA_PATH = RESULTS / "fedavg_metadata.json"
 
 st.set_page_config(
     page_title="FedRoad | Traffic Intelligence",
@@ -43,73 +51,163 @@ st.set_page_config(
 )
 
 
-# ---------------------------------------------------------
-# Styling: single-page dashboard
-# ---------------------------------------------------------
+# ============================================================
+# 2. HTML RENDERING HELPER
+# ============================================================
+
+def render_html(container, markup: str):
+    """
+    Render HTML safely through Streamlit Markdown.
+
+    dedent() removes indentation that could otherwise cause
+    Streamlit to interpret HTML as a code block.
+    """
+    container.markdown(
+        dedent(markup).strip(),
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================
+# 3. PROFESSIONAL STYLING
+# ============================================================
 
 st.markdown(
     """
     <style>
+    .stApp {
+        background-color: #0e1420;
+    }
+
     .block-container {
-        max-width: 1450px;
-        padding-top: 1.2rem;
+        max-width: 1480px;
+        padding-top: 1.4rem;
         padding-bottom: 3rem;
     }
 
+    /* Header */
+
     .hero {
-        padding: 1.7rem 1.8rem;
-        border-radius: 22px;
-        background:
-            radial-gradient(circle at 85% 5%,
-                rgba(45, 212, 191, 0.20), transparent 32%),
-            linear-gradient(125deg, #0b1222, #142b42 65%, #123b42);
-        border: 1px solid rgba(110, 231, 220, 0.22);
-        color: #f1f5f9;
-        margin-bottom: 1.2rem;
+        padding: 1.7rem 1.9rem;
+        border-radius: 13px;
+        background: linear-gradient(120deg, #12243a, #19384d);
+        border: 1px solid #29465e;
+        margin-bottom: 1rem;
     }
 
-    .hero h1 {
-        color: #f8fafc;
-        font-size: 2.5rem;
-        margin: 0;
-        letter-spacing: -1.2px;
-    }
-
-    .hero p {
-        color: #c5d5e6;
-        margin: 0.55rem 0 0 0;
-        font-size: 1.03rem;
-    }
-
-    .eyebrow {
-        color: #5eead4;
+    .hero .eyebrow {
+        color: #79cfc5;
         font-weight: 700;
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         letter-spacing: 2px;
         text-transform: uppercase;
         margin-bottom: 0.5rem;
     }
 
-    .section-intro {
-        color: #64748b;
-        margin-top: -0.5rem;
-        margin-bottom: 1.1rem;
+    .hero h1 {
+        color: #ffffff;
+        font-size: 2.4rem;
+        font-weight: 750;
+        letter-spacing: -1px;
+        margin: 0;
     }
 
-    [data-testid="stMetric"] {
-        padding: 0.9rem 1rem;
-        border: 1px solid rgba(125, 145, 165, 0.25);
-        border-radius: 14px;
-        background: rgba(125, 145, 165, 0.06);
+    .hero p {
+        color: #c5d4e2;
+        margin-top: 0.5rem;
+        margin-bottom: 0;
+        font-size: 1.02rem;
     }
 
-    div[data-testid="stButton"] button {
-        border-radius: 10px;
+    .section-note {
+        color: #a3b3c6;
+        font-size: 0.94rem;
+        margin-top: -0.45rem;
+        margin-bottom: 1rem;
+    }
+
+    /* White metric cards with explicit dark typography */
+
+    .metric-card {
+        display: block;
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 112px;
+        padding: 15px 17px;
+        margin-bottom: 8px;
+
+        background-color: #ffffff !important;
+        color: #14243a !important;
+
+        border: 1px solid #dce4ec;
+        border-radius: 11px;
+
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.10);
+        transition: border-color 0.2s ease;
+    }
+
+    .metric-card:hover {
+        border-color: #0f766e;
+    }
+
+    .metric-label {
+        color: #536579 !important;
+        font-size: 0.83rem;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .metric-value {
+        color: #14243a !important;
+        font-size: 1.75rem;
+        font-weight: 750;
+        line-height: 1.25;
+    }
+
+    .metric-description {
+        color: #64748b !important;
+        font-size: 0.77rem;
+        margin-top: 5px;
+    }
+
+    .metric-positive {
+        color: #087f5b !important;
+    }
+
+    .metric-negative {
+        color: #b45309 !important;
+    }
+
+    /* Network diagram panel */
+
+    .network-panel {
+        width: 100%;
+        background: #ffffff !important;
+        border: 1px solid #dce4ec;
+        border-radius: 12px;
+        padding: 12px;
+        overflow-x: auto;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
+        box-sizing: border-box;
+    }
+
+    /* Layout */
+
+    hr {
+        border-color: #344155;
+        margin-top: 1.45rem;
+        margin-bottom: 1.45rem;
+    }
+
+    div[data-testid="stDownloadButton"] button {
+        border-radius: 8px;
         font-weight: 600;
     }
 
-    hr {
-        margin: 1.6rem 0;
+    div[data-testid="stDataFrame"] {
+        border: 1px solid #334155;
+        border-radius: 9px;
+        overflow: hidden;
     }
     </style>
     """,
@@ -117,34 +215,88 @@ st.markdown(
 )
 
 
-# ---------------------------------------------------------
-# Data and model loading
-# ---------------------------------------------------------
+# ============================================================
+# 4. METRIC CARD COMPONENT
+# ============================================================
 
-@st.cache_resource(show_spinner="Preparing the traffic dataset...")
-def get_data():
+def metric_card(
+    container,
+    label: str,
+    value: Any,
+    description: str = "",
+    description_type: str = "",
+):
+    """Create a white metric card with readable dark text."""
+
+    safe_label = html.escape(str(label))
+    safe_value = html.escape(str(value))
+    safe_description = html.escape(str(description))
+
+    description_class = ""
+
+    if description_type == "positive":
+        description_class = "metric-positive"
+    elif description_type == "negative":
+        description_class = "metric-negative"
+
+    description_html = ""
+
+    if safe_description:
+        description_html = f"""
+        <div class="metric-description {description_class}">
+            {safe_description}
+        </div>
+        """
+
+    render_html(
+        container,
+        f"""
+        <div class="metric-card">
+            <div class="metric-label">{safe_label}</div>
+            <div class="metric-value">{safe_value}</div>
+            {description_html}
+        </div>
+        """,
+    )
+
+
+# ============================================================
+# 5. DATA AND MODEL LOADING
+# ============================================================
+
+@st.cache_resource(show_spinner="Loading verified METR-LA dataset...")
+def load_traffic_data():
     if not DEFAULT_DATA_PATH.exists():
         download_metr_la(DEFAULT_DATA_PATH)
 
     return load_and_preprocess(DEFAULT_DATA_PATH)
 
 
-@st.cache_resource
-def get_model(path_string: str, modified_time: float):
-    """Load a locally generated FedRoad checkpoint."""
+@st.cache_resource(show_spinner=False)
+def load_gru_model(
+    checkpoint_path: str,
+    modified_time: float,
+):
+    """Load a locally generated centralized or federated GRU."""
+
     checkpoint = torch.load(
-        path_string,
+        checkpoint_path,
         map_location="cpu",
         weights_only=False,
     )
 
-    # Centralized checkpoints include metadata.
-    # Flower checkpoints contain the state dictionary directly.
     if (
         isinstance(checkpoint, dict)
         and "model_state_dict" in checkpoint
     ):
         state_dict = checkpoint["model_state_dict"]
+
+    elif (
+        isinstance(checkpoint, dict)
+        and "state_dict" in checkpoint
+    ):
+        state_dict = checkpoint["state_dict"]
+
     else:
         state_dict = checkpoint
 
@@ -152,297 +304,409 @@ def get_model(path_string: str, modified_time: float):
         hidden_size=32,
         num_horizons=3,
     )
+
     model.load_state_dict(state_dict)
     model.eval()
+
     return model
 
 
-def load_csv(path: Path) -> pd.DataFrame | None:
+def read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+
+    try:
+        result = json.loads(
+            path.read_text(encoding="utf-8")
+        )
+        return result if isinstance(result, dict) else {}
+
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def read_csv(path: Path):
     if not path.exists():
         return None
 
     try:
         return pd.read_csv(path)
+
     except (OSError, pd.errors.ParserError, UnicodeDecodeError) as exc:
-        st.warning(f"Could not read {path.name}: {exc}")
+        st.warning(f"Unable to read {path.name}: {exc}")
         return None
 
 
-# ---------------------------------------------------------
-# Neural-network SVG visualization
-# ---------------------------------------------------------
+# ============================================================
+# 6. PLOTLY CHART STYLE
+# ============================================================
 
-def build_network_html(animate: bool = True) -> str:
+def style_chart(fig: go.Figure, height: int = 390):
+
+    fig.update_layout(
+        template="plotly_white",
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font=dict(
+            family="Arial, sans-serif",
+            color="#28384a",
+            size=12,
+        ),
+        height=height,
+        margin=dict(
+            l=25,
+            r=20,
+            t=70,
+            b=30,
+        ),
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            x=0,
+        ),
+    )
+
+    fig.update_xaxes(
+        showgrid=False,
+        linecolor="#cbd5e1",
+        tickfont=dict(color="#475569"),
+        title_font=dict(color="#334155"),
+    )
+
+    fig.update_yaxes(
+        gridcolor="#e8edf3",
+        zeroline=False,
+        tickfont=dict(color="#475569"),
+        title_font=dict(color="#334155"),
+    )
+
+    return fig
+
+
+# ============================================================
+# 7. GRU NEURAL NETWORK DIAGRAM
+# ============================================================
+
+def build_gru_diagram() -> str:
     """
-    Draw an illustrative, animated view of the actual GRU:
-    input sequence -> recurrent states -> three forecast outputs.
+    Professional static architecture diagram.
 
-    Multiple GRU columns are time-unrolled copies of the same
-    GRU cell, not independent learned hidden layers.
+    Repeated GRU columns represent the same recurrent
+    cell at different time steps, not independent layers.
     """
 
-    width, height = 1140, 450
+    width = 1180
+    height = 455
 
     layers = [
         {
-            "x": 85,
-            "count": 7,
-            "kind": "input",
-            "title": "INPUT SEQUENCE",
-            "subtitle": "12 × [speed, mask]",
+            "x": 95,
+            "count": 6,
+            "title": "INPUT",
+            "subtitle": "12 × 2 features",
+            "color": "#64748b",
         },
         {
-            "x": 315,
-            "count": 8,
-            "kind": "hidden",
+            "x": 350,
+            "count": 7,
             "title": "GRU STATE",
             "subtitle": "Earlier step",
+            "color": "#0f766e",
         },
         {
-            "x": 535,
-            "count": 8,
-            "kind": "hidden",
+            "x": 570,
+            "count": 7,
             "title": "GRU STATE",
-            "subtitle": "Middle step",
+            "subtitle": "Intermediate step",
+            "color": "#0f766e",
         },
         {
-            "x": 755,
-            "count": 8,
-            "kind": "hidden",
+            "x": 790,
+            "count": 7,
             "title": "GRU STATE",
-            "subtitle": "Final step",
+            "subtitle": "Final time step",
+            "color": "#0f766e",
         },
         {
-            "x": 975,
+            "x": 1050,
             "count": 3,
-            "kind": "output",
-            "title": "FORECASTS",
-            "subtitle": "Linear output",
+            "title": "OUTPUT",
+            "subtitle": "Linear head",
+            "color": "#b7791f",
         },
     ]
 
     positions = []
 
     for layer in layers:
-        ys = np.linspace(132, 332, layer["count"]).tolist()
-        positions.append([(layer["x"], float(y)) for y in ys])
+        ys = np.linspace(140, 330, layer["count"])
 
-    svg_parts = []
+        positions.append(
+            [(layer["x"], float(y)) for y in ys]
+        )
 
-    # Layer-to-layer connections.
-    connection_number = 0
+    pieces = []
 
+    # Draw connections.
     for layer_index in range(len(positions) - 1):
-        left_nodes = positions[layer_index]
-        right_nodes = positions[layer_index + 1]
 
-        for i, (x1, y1) in enumerate(left_nodes):
-            for j, (x2, y2) in enumerate(right_nodes):
-                delay = (connection_number % 13) * 0.09
+        left = positions[layer_index]
+        right = positions[layer_index + 1]
 
-                svg_parts.append(
-                    f'<line class="link" '
-                    f'x1="{x1}" y1="{y1}" '
-                    f'x2="{x2}" y2="{y2}" '
-                    f'style="animation-delay:{delay:.2f}s" />'
-                )
-                connection_number += 1
+        for i, (x1, y1) in enumerate(left):
 
-    # Neuron nodes. The diagram shows representative neurons,
-    # not all 32 hidden units.
-    colors = {
-        "input": "#38bdf8",
-        "hidden": "#5eead4",
-        "output": "#fbbf24",
-    }
+            for j, (x2, y2) in enumerate(right):
 
+                if (
+                    layer_index in (1, 2)
+                    or (i + j) % 2 == 0
+                ):
+
+                    pieces.append(
+                        f"""
+                        <line
+                            x1="{x1}" y1="{y1}"
+                            x2="{x2}" y2="{y2}"
+                            class="connection"
+                        />
+                        """
+                    )
+
+    # Draw neuron nodes and labels.
     for layer_index, layer in enumerate(layers):
+
         x = layer["x"]
-        color = colors[layer["kind"]]
+        color = layer["color"]
 
-        for node_index, (_, y) in enumerate(positions[layer_index]):
-            delay = (node_index % 8) * 0.16
+        for cx, cy in positions[layer_index]:
 
-            svg_parts.append(
-                f'<circle class="neuron {layer["kind"]}" '
-                f'cx="{x}" cy="{y}" r="9" '
-                f'fill="{color}" '
-                f'style="animation-delay:{delay:.2f}s" />'
+            pieces.append(
+                f"""
+                <circle
+                    cx="{cx}" cy="{cy}" r="9"
+                    fill="#ffffff"
+                    stroke="{color}"
+                    stroke-width="2.2"
+                />
+                """
             )
 
-            svg_parts.append(
-                f'<circle cx="{x}" cy="{y}" r="3" '
-                f'fill="#ffffff" opacity="0.8" />'
-            )
+        pieces.append(
+            f"""
+            <text x="{x}" y="62"
+                  text-anchor="middle"
+                  class="layer-title">
+                {layer["title"]}
+            </text>
 
-        svg_parts.append(
-            f'<text x="{x}" y="62" text-anchor="middle" '
-            f'class="layer-title">{layer["title"]}</text>'
-        )
-        svg_parts.append(
-            f'<text x="{x}" y="84" text-anchor="middle" '
-            f'class="layer-subtitle">{layer["subtitle"]}</text>'
+            <text x="{x}" y="86"
+                  text-anchor="middle"
+                  class="layer-subtitle">
+                {layer["subtitle"]}
+            </text>
+            """
         )
 
-    # Output labels.
-    for y, label in zip(
-        [232.0, 282.0, 332.0],
+    # Layer descriptions.
+    descriptions = [
+        (95, "Speed + mask"),
+        (350, "Shared GRU cell"),
+        (570, "32 hidden units"),
+        (790, "Final state"),
+        (1050, "3 predictions"),
+    ]
+
+    for x, text in descriptions:
+
+        pieces.append(
+            f"""
+            <text x="{x}" y="360"
+                  text-anchor="middle"
+                  class="detail">
+                {text}
+            </text>
+            """
+        )
+
+    # Prediction outputs.
+    for (x, y), label in zip(
+        positions[-1],
         ["15 min", "30 min", "60 min"],
     ):
-        svg_parts.append(
-            f'<text x="1000" y="{y + 4}" '
-            f'class="output-label">{label}</text>'
+
+        pieces.append(
+            f"""
+            <text x="1073" y="{y + 4}"
+                  class="output-label">
+                {label}
+            </text>
+            """
         )
 
-    animation_css = (
+    # Recurrent flow.
+    pieces.append(
         """
-        .animated .link {
-            stroke-dasharray: 4 9;
-            animation: signal-flow 1.7s linear infinite;
-        }
-        .animated .neuron {
-            animation: neuron-pulse 2.2s ease-in-out infinite;
-            transform-box: fill-box;
-            transform-origin: center;
-        }
-        @keyframes signal-flow {
-            to { stroke-dashoffset: -26; }
-        }
-        @keyframes neuron-pulse {
-            0%, 100% { opacity: 0.85; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.14); }
-        }
+        <path
+            d="M 350 390 C 430 425, 700 425, 790 390"
+            fill="none"
+            stroke="#0f766e"
+            stroke-width="2"
+        />
+
+        <path
+            d="M 780 383 L 790 390 L 780 397"
+            fill="none"
+            stroke="#0f766e"
+            stroke-width="2"
+        />
+
+        <text x="570" y="439"
+              text-anchor="middle"
+              class="detail">
+            Shared recurrent weights across the 12 input time steps
+        </text>
         """
-        if animate
-        else ""
     )
-
-    network_class = "network animated" if animate else "network"
-
-    svg_body = "".join(svg_parts)
 
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body {{
-            margin: 0;
-            background: #0b1220;
-            color: #e2e8f0;
-            font-family: Arial, sans-serif;
-            overflow-x: auto;
-        }}
-        .frame {{
-            width: 100%;
-            min-width: 760px;
-            padding: 8px 0;
-            box-sizing: border-box;
-            background:
-                radial-gradient(circle at 50% 35%,
-                    rgba(45, 212, 191, 0.08), transparent 55%),
-                #0b1220;
-            border: 1px solid #263449;
-            border-radius: 16px;
-        }}
-        svg {{
-            display: block;
-            width: 100%;
-            height: auto;
-        }}
-        .link {{
-            stroke: #4a9eaa;
-            stroke-width: 1.1;
-            opacity: 0.30;
-            fill: none;
-        }}
-        .neuron {{
-            stroke: rgba(255,255,255,0.8);
-            stroke-width: 1.2;
-        }}
-        .layer-title {{
-            fill: #e2e8f0;
-            font-size: 13px;
-            font-weight: 700;
-            letter-spacing: 1px;
-        }}
-        .layer-subtitle {{
-            fill: #93a8bc;
-            font-size: 11px;
-        }}
-        .output-label {{
-            fill: #fbbf24;
-            font-size: 12px;
-            font-weight: 700;
-        }}
-        .footer {{
-            color: #9fb1c4;
-            text-align: center;
-            padding: 0 15px 12px 15px;
-            font-size: 11px;
-        }}
-        {animation_css}
-    </style>
+        <meta name="viewport"
+              content="width=device-width, initial-scale=1">
+
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+                background: #ffffff;
+                font-family: Arial, sans-serif;
+            }}
+
+            .network-panel {{
+                width: 100%;
+                background: #ffffff;
+                border-radius: 10px;
+                overflow-x: auto;
+            }}
+
+            svg {{
+                display: block;
+                width: 100%;
+                min-width: 760px;
+                height: auto;
+                background: #ffffff;
+            }}
+
+            .connection {{
+                stroke: #b7c6d5;
+                stroke-width: 1.15;
+                opacity: 0.75;
+            }}
+
+            .layer-title {{
+                fill: #14243a;
+                font-size: 14px;
+                font-weight: 700;
+                letter-spacing: 0.7px;
+            }}
+
+            .layer-subtitle {{
+                fill: #64748b;
+                font-size: 11px;
+            }}
+
+            .detail {{
+                fill: #536579;
+                font-size: 11px;
+            }}
+
+            .output-label {{
+                fill: #9a6700;
+                font-size: 10px;
+                font-weight: 700;
+            }}
+        </style>
     </head>
+
     <body>
-      <div class="frame">
-        <svg class="{network_class}"
-             viewBox="0 0 {width} {height}"
-             role="img"
-             aria-label="Animated GRU neural network showing input, recurrent states and forecasts">
-          {svg_body}
-          <text x="570" y="410" text-anchor="middle"
-                fill="#5eead4" font-size="12">
-            Same GRU cell and shared weights are reused across time
-          </text>
-        </svg>
-        <div class="footer">
-          Illustrative neural-network view · each displayed node represents
-          a subset of the actual model units.
+        <div class="network-panel">
+
+            <svg viewBox="0 0 {width} {height}"
+                 role="img"
+                 aria-label="FedRoad GRU architecture">
+
+                {''.join(pieces)}
+
+            </svg>
+
         </div>
-      </div>
     </body>
     </html>
     """
 
 
-# ---------------------------------------------------------
-# Main page
-# ---------------------------------------------------------
+# ============================================================
+# 8. HEADER
+# ============================================================
 
-st.markdown(
+render_html(
+    st,
     """
     <div class="hero">
-      <div class="eyebrow">Privacy-aware traffic intelligence</div>
-      <h1>🚦 TrafficFL</h1>
-      <p>
-        Deep-learning traffic forecasting with GRU neural networks
-        and federated learning.
-      </p>
+
+        <div class="eyebrow">
+            FEDERATED TRAFFIC INTELLIGENCE
+        </div>
+
+        <h1>FedRoad</h1>
+
+        <p>
+            Deep-learning traffic-speed forecasting
+            with GRU neural networks and Flower FedAvg.
+        </p>
+
     </div>
     """,
-    unsafe_allow_html=True,
 )
 
 st.caption(
-    "METR-LA · 207 sensors · 60-minute input history · "
-    "15 / 30 / 60-minute forecasts"
+    "METR-LA benchmark · 207 sensors · "
+    "5-minute sampling · 60-minute input history · "
+    "15 / 30 / 60-minute forecasting horizons"
 )
 
-with st.spinner("Loading verified traffic data..."):
-    try:
-        traffic = get_data()
-    except Exception as exc:
-        st.error(f"Unable to load METR-LA: {exc}")
-        st.info(
-            "Check the dataset path and run "
-            "`python -m scripts.download_data` from the project root."
-        )
-        st.stop()
+
+# ============================================================
+# 9. LOAD DATA
+# ============================================================
+
+try:
+    with st.spinner("Preparing verified traffic dataset..."):
+        traffic = load_traffic_data()
+
+except Exception as exc:
+
+    st.error(f"Unable to load METR-LA: {exc}")
+
+    st.info(
+        "Run `python -m scripts.download_data` "
+        "from the project root."
+    )
+
+    st.stop()
 
 
-# Discover models available on this computer.
+central_metadata = read_json(CENTRAL_METADATA_PATH)
+fed_metadata = read_json(FED_METADATA_PATH)
+
+
+# ============================================================
+# 10. MODEL AVAILABILITY
+# ============================================================
+
 model_paths = {}
 
 if CENTRAL_MODEL_PATH.exists():
@@ -456,107 +720,196 @@ predictor_options = ["Persistence"] + list(model_paths.keys())
 default_predictor = (
     "FedAvg GRU"
     if "FedAvg GRU" in predictor_options
+
     else "Centralized GRU"
     if "Centralized GRU" in predictor_options
+
     else "Persistence"
 )
 
 
-# Metadata is informative only; don't assume checkpoints exist.
-metadata_path = RESULTS / "fedavg_metadata.json"
-fed_metadata = {}
+# ============================================================
+# 11. SYSTEM OVERVIEW
+# ============================================================
 
-if metadata_path.exists():
-    try:
-        fed_metadata = json.loads(
-            metadata_path.read_text(encoding="utf-8")
-        )
-    except (OSError, json.JSONDecodeError):
-        fed_metadata = {}
+st.subheader("System overview")
 
+overview = st.columns(5)
 
-k1, k2, k3, k4 = st.columns(4)
+metric_card(
+    overview[0],
+    "Traffic sensors",
+    f"{len(traffic.sensor_ids):,}",
+    "METR-LA road sensors",
+)
 
-k1.metric("Traffic sensors", len(traffic.sensor_ids))
-k2.metric("Input history", f"{INPUT_STEPS * 5} minutes")
-k3.metric(
+metric_card(
+    overview[1],
+    "Time steps",
+    f"{len(traffic.timestamps):,}",
+    "Five-minute readings",
+)
+
+metric_card(
+    overview[2],
+    "Unavailable data",
+    f"{traffic.zero_percent:.2f}%",
+    "Masked during evaluation",
+)
+
+metric_card(
+    overview[3],
     "Federated clients",
     fed_metadata.get("num_clients", 4),
+    "Simulated clients",
 )
-k4.metric(
+
+metric_card(
+    overview[4],
     "FedAvg rounds",
     fed_metadata.get("num_server_rounds", 10),
+    "Completed aggregation rounds",
 )
+
+
+with st.expander("Dataset and model configuration"):
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+
+        st.markdown("**Dataset**")
+
+        st.write("METR-LA")
+        st.write(f"Rows: {len(traffic.timestamps):,}")
+        st.write(f"Sensors: {len(traffic.sensor_ids)}")
+
+        st.write(
+            f"Unavailable readings: {traffic.zero_percent:.2f}%"
+        )
+
+    with c2:
+
+        st.markdown("**Centralized GRU**")
+
+        st.write("One GRU layer")
+        st.write("32 hidden units")
+        st.write("Three forecast outputs")
+
+        st.write(
+            f"Epochs: {central_metadata.get('epochs_run', '32')}"
+        )
+
+        st.write(
+            f"Best epoch: {central_metadata.get('best_epoch', '25')}"
+        )
+
+    with c3:
+
+        st.markdown("**Federated learning**")
+
+        st.write("Framework: Flower")
+        st.write("Strategy: FedAvg")
+
+        st.write(
+            f"Clients: {fed_metadata.get('num_clients', 4)}"
+        )
+
+        st.write(
+            f"Rounds: {fed_metadata.get('num_server_rounds', 10)}"
+        )
+
+        st.write(
+            f"Local epochs: {fed_metadata.get('local_epochs', 1)}"
+        )
+
 
 st.divider()
 
 
-# ---------------------------------------------------------
-# Interactive prediction area
-# ---------------------------------------------------------
+# ============================================================
+# 12. TRAFFIC FORECAST
+# ============================================================
 
-st.markdown("### 🔮 Explore a traffic prediction")
+st.subheader("Traffic forecasting")
+
 st.markdown(
-    '<div class="section-intro">'
-    "Choose a sensor and a historical test window to see a forecast "
-    "and compare it with the observed future."
-    "</div>",
+    """
+    <div class="section-note">
+        Choose a trained model, sensor and historical test window.
+        The application forecasts future speeds and compares them
+        with recorded observations.
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
-c1, c2, c3 = st.columns([1.1, 1.1, 1.4])
+control_cols = st.columns([1.1, 1.1, 2.0])
 
-with c1:
+with control_cols[0]:
+
     selected_model = st.selectbox(
-        "Prediction model",
+        "Forecasting model",
         predictor_options,
         index=predictor_options.index(default_predictor),
     )
 
-with c2:
+with control_cols[1]:
+
     selected_sensor = st.selectbox(
-        "Traffic sensor",
+        "Traffic sensor ID",
         traffic.sensor_ids,
         index=0,
     )
 
 sensor_index = traffic.sensor_ids.index(selected_sensor)
 
-# x_test contains the chronologically held-out 20% of time rows.
 maximum_start = max(
     0,
     len(traffic.x_test) - INPUT_STEPS - max(HORIZONS),
 )
 
-with c3:
+with control_cols[2]:
+
     test_start = st.slider(
-        "Historical test window",
+        "Historical test-window position",
         min_value=0,
         max_value=int(maximum_start),
         value=min(200, int(maximum_start)),
-        step=1,
         help=(
-            "Choose the starting position of a 60-minute input sequence "
-            "from the held-out historical period."
+            "Select the starting position of the "
+            "60-minute historical input sequence."
         ),
     )
 
-test_offset = len(traffic.timestamps) - len(traffic.x_test)
+
+# ============================================================
+# 13. INPUT PREPARATION
+# ============================================================
+
+test_offset = (
+    len(traffic.timestamps) - len(traffic.x_test)
+)
 
 history_end = test_start + INPUT_STEPS
 
 history_scaled = traffic.x_test[
-    test_start:history_end, sensor_index
+    test_start:history_end,
+    sensor_index,
 ]
+
 history_mask = traffic.m_test[
-    test_start:history_end, sensor_index
+    test_start:history_end,
+    sensor_index,
 ]
 
-# Convert normalized history back to original units.
-mean_value = float(traffic.mean[sensor_index])
-std_value = float(traffic.std[sensor_index])
+sensor_mean = float(traffic.mean[sensor_index])
+sensor_std = float(traffic.std[sensor_index])
 
-history_raw = history_scaled * std_value + mean_value
+history_raw = (
+    history_scaled * sensor_std + sensor_mean
+)
+
 history_plot = np.where(
     history_mask > 0.5,
     history_raw,
@@ -570,21 +923,26 @@ history_times = traffic.timestamps[
 
 valid_history = np.flatnonzero(history_mask > 0.5)
 
-if len(valid_history):
-    latest_valid_index = int(valid_history[-1])
-    latest_speed = float(history_raw[latest_valid_index])
-else:
-    latest_speed = float("nan")
-    st.warning(
-        "This input window has no observed readings for the selected sensor. "
-        "Predictions can still be generated by a neural model, but persistence "
-        "has no valid previous speed to repeat."
-    )
+latest_speed = (
+    float(history_raw[valid_history[-1]])
+    if len(valid_history)
+    else float("nan")
+)
+
+input_coverage = float(
+    history_mask.mean() * 100
+)
 
 
-# Three targets corresponding to the three configured forecast horizons.
+# ============================================================
+# 14. FUTURE TARGETS
+# ============================================================
+
 future_indices = (
-    test_start + INPUT_STEPS - 1 + np.asarray(HORIZONS)
+    test_start
+    + INPUT_STEPS
+    - 1
+    + np.asarray(HORIZONS)
 )
 
 future_times = traffic.timestamps[
@@ -592,152 +950,221 @@ future_times = traffic.timestamps[
 ]
 
 future_mask = traffic.m_test[
-    future_indices, sensor_index
+    future_indices,
+    sensor_index,
 ]
 
 future_scaled = traffic.x_test[
-    future_indices, sensor_index
+    future_indices,
+    sensor_index,
 ]
 
 future_actual = np.where(
     future_mask > 0.5,
-    future_scaled * std_value + mean_value,
+    future_scaled * sensor_std + sensor_mean,
     np.nan,
 )
 
 
-# Run the selected model.
+# ============================================================
+# 15. MODEL INFERENCE
+# ============================================================
+
 hidden_states = None
-prediction_error = None
+model_error = None
 
 if selected_model == "Persistence":
+
     if len(valid_history):
+
         latest_normalized = float(
-            history_scaled[latest_valid_index]
+            history_scaled[valid_history[-1]]
         )
+
         predictions_normalized = np.repeat(
             latest_normalized,
             len(HORIZONS),
         )
+
     else:
+
         predictions_normalized = np.full(
-            len(HORIZONS), np.nan
+            len(HORIZONS),
+            np.nan,
         )
 
 else:
-    model_path = model_paths[selected_model]
+
+    checkpoint_path = model_paths[selected_model]
 
     try:
-        model = get_model(
-            str(model_path.resolve()),
-            model_path.stat().st_mtime,
+
+        model = load_gru_model(
+            str(checkpoint_path.resolve()),
+            checkpoint_path.stat().st_mtime,
         )
 
-        input_array = np.stack(
+        model_input = np.stack(
             [history_scaled, history_mask],
             axis=-1,
         ).astype(np.float32)
 
         input_tensor = torch.from_numpy(
-            input_array
+            model_input
         ).unsqueeze(0)
 
-        with torch.no_grad():
-            sequence, _ = model.gru(input_tensor)
-            hidden_states = sequence[0].cpu().numpy()
+        with torch.inference_mode():
 
-            predicted_tensor = model(input_tensor)
+            recurrent_output, _ = model.gru(input_tensor)
+
+            hidden_states = (
+                recurrent_output[0].cpu().numpy()
+            )
+
             predictions_normalized = (
-                predicted_tensor[0].cpu().numpy()
+                model(input_tensor)[0].cpu().numpy()
             )
 
     except Exception as exc:
-        prediction_error = (
-            f"Could not load {selected_model} checkpoint: {exc}"
-        )
+
+        model_error = str(exc)
+
         predictions_normalized = np.full(
-            len(HORIZONS), np.nan
+            len(HORIZONS),
+            np.nan,
         )
+
 
 predictions_raw = (
-    predictions_normalized * std_value + mean_value
+    predictions_normalized * sensor_std + sensor_mean
 )
+
+
+# ============================================================
+# 16. INPUT QUALITY INFORMATION
+# ============================================================
 
 st.caption(
-    f"Selected sensor: {selected_sensor} · "
+    f"Sensor {selected_sensor} · "
     f"Input period: {history_times[0]} to {history_times[-1]} · "
-    "Forecasts are made from historical test data, not live traffic."
+    f"Observed input coverage: {input_coverage:.1f}%"
 )
 
-if prediction_error:
-    st.error(prediction_error)
+if model_error:
+
+    st.error(
+        f"Unable to load or execute {selected_model}: {model_error}"
+    )
+
+if input_coverage < 100:
+
+    st.warning(
+        f"Only {input_coverage:.1f}% of input readings were observed. "
+        "Missing inputs are imputed using training-set statistics, "
+        "while their observation masks are retained."
+    )
+
+if not len(valid_history):
+
+    st.warning(
+        "No valid observed reading is available for this sensor "
+        "in the selected window."
+    )
 
 
-# Prediction summary cards.
+# ============================================================
+# 17. FORECAST CARDS
+# ============================================================
+
 forecast_columns = st.columns(3)
 
-for i, minutes in enumerate([15, 30, 60]):
-    value = predictions_raw[i]
+for index, horizon in enumerate([15, 30, 60]):
+
+    value = float(predictions_raw[index])
 
     if np.isfinite(value):
-        delta = None
+
+        description = ""
+
         if np.isfinite(latest_speed):
-            delta = f"{value - latest_speed:+.2f} vs latest observed"
 
-        forecast_columns[i].metric(
-            f"{minutes}-minute prediction",
+            difference = value - latest_speed
+
+            description = (
+                f"{difference:+.2f} compared with latest observation"
+            )
+
+        metric_card(
+            forecast_columns[index],
+            f"Forecast · +{horizon} minutes",
             f"{value:.2f}",
-            delta=delta,
+            description,
         )
+
     else:
-        forecast_columns[i].metric(
-            f"{minutes}-minute prediction",
-            "N/A",
+
+        metric_card(
+            forecast_columns[index],
+            f"Forecast · +{horizon} minutes",
+            "Unavailable",
         )
 
 
-# Forecast chart: historical observations, forecast points and true future.
-fig = go.Figure()
+# ============================================================
+# 18. FORECAST CHART
+# ============================================================
 
-fig.add_trace(
+forecast_fig = go.Figure()
+
+forecast_fig.add_trace(
     go.Scatter(
         x=history_times,
         y=history_plot,
         mode="lines+markers",
         name="Observed input history",
         connectgaps=False,
-        line=dict(color="#0891b2", width=2.7),
+        line=dict(color="#526579", width=2.5),
         marker=dict(size=5),
     )
 )
 
-forecast_base = (
+forecast_origin = history_times[-1]
+
+forecast_origin_value = (
     float(history_raw[-1])
     if history_mask[-1] > 0.5
     else None
 )
 
-fig.add_trace(
+forecast_fig.add_trace(
     go.Scatter(
-        x=[history_times[-1], *list(future_times)],
-        y=[forecast_base, *list(predictions_raw)],
+        x=[forecast_origin, *list(future_times)],
+        y=[forecast_origin_value, *list(predictions_raw)],
         mode="lines+markers",
         name=f"{selected_model} forecast",
-        line=dict(color="#0d9488", width=3, dash="dash"),
-        marker=dict(size=10, symbol="diamond"),
         connectgaps=False,
+        line=dict(
+            color="#0f766e",
+            width=2.8,
+            dash="dash",
+        ),
+        marker=dict(
+            size=10,
+            symbol="diamond",
+        ),
     )
 )
 
 if np.isfinite(future_actual).any():
-    fig.add_trace(
+
+    forecast_fig.add_trace(
         go.Scatter(
             x=future_times,
             y=future_actual,
             mode="markers",
-            name="Observed future (test reference)",
+            name="Observed future",
             marker=dict(
-                color="#d97706",
+                color="#c0842d",
                 size=12,
                 symbol="circle-open",
                 line=dict(width=2),
@@ -745,70 +1172,155 @@ if np.isfinite(future_actual).any():
         )
     )
 
-fig.add_vline(
-    x=history_times[-1],
+forecast_fig.add_vline(
+    x=forecast_origin,
     line_dash="dot",
     line_color="#94a3b8",
     annotation_text="Forecast origin",
 )
 
-fig.update_layout(
-    title="Observed history → predicted traffic speed",
+forecast_fig.update_layout(
+    title="Historical observations and predicted traffic speed",
     xaxis_title="Timestamp",
     yaxis_title="Speed (dataset units)",
-    height=430,
-    template="plotly_white",
-    hovermode="x unified",
-    legend=dict(orientation="h", yanchor="bottom", y=1.02),
-    margin=dict(l=15, r=15, t=75, b=15),
 )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(
+    style_chart(forecast_fig, 430),
+    use_container_width=True,
+)
 
 st.caption(
-    "The model predicts specific future horizons. Markers show the "
-    "prediction at each horizon; they are not a dense five-minute forecast."
+    "Predictions are generated at +15, +30 and +60 minutes. "
+    "The connecting line is only a visual guide, not a series "
+    "of additional five-minute predictions."
 )
+
+
+# ============================================================
+# 19. FORECAST DETAIL TABLE
+# ============================================================
+
+forecast_table = pd.DataFrame({
+    "Forecast horizon": [
+        f"+{h} min" for h in [15, 30, 60]
+    ],
+    "Target timestamp": [
+        str(t) for t in future_times
+    ],
+    "Predicted speed": predictions_raw,
+    "Observed speed": future_actual,
+})
+
+forecast_table["Absolute error"] = np.where(
+    np.isfinite(future_actual)
+    & np.isfinite(predictions_raw),
+    np.abs(predictions_raw - future_actual),
+    np.nan,
+)
+
+st.dataframe(
+    forecast_table.round(3),
+    use_container_width=True,
+    hide_index=True,
+)
+
+st.caption(
+    f"Observed future targets: "
+    f"{int(np.sum(future_mask > 0.5))}/3. "
+    "The model produces point forecasts, not calibrated prediction intervals."
+)
+
 
 st.divider()
 
 
-# ---------------------------------------------------------
-# Animated neural network and actual activations
-# ---------------------------------------------------------
+# ============================================================
+# 20. NEURAL NETWORK ARCHITECTURE
+# ============================================================
 
-st.markdown("### 🧠 Inside the neural network")
+st.subheader("Neural network architecture")
+
 st.markdown(
-    '<div class="section-intro">'
-    "See the GRU architecture and the hidden-state activations "
-    "produced by your selected model for this input window."
-    "</div>",
+    """
+    <div class="section-note">
+        Structural view of the GRU neural network and its
+        actual hidden-state activations.
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
-animate_signals = st.checkbox(
-    "Animate signal flow",
-    value=True,
-)
-
 components.html(
-    build_network_html(animate=animate_signals),
-    height=465,
+    build_gru_diagram(),
+    height=480,
     scrolling=False,
 )
 
 st.caption(
-    "Architecture: 12 sequential steps × 2 input features → "
-    "one GRU layer with 32 hidden units → linear head with 3 outputs. "
-    "The repeated GRU columns above illustrate the same cell at different "
-    "times; they are not separate learned layers."
+    "Input: 12 time steps × 2 features → one GRU layer "
+    "with 32 hidden units → linear output with three forecasts. "
+    "Repeated GRU columns represent the same recurrent cell "
+    "at different time steps, not independent hidden layers."
 )
 
-if hidden_states is not None:
-    heatmap = px.imshow(
+
+# ============================================================
+# 21. ACTUAL GRU ACTIVATIONS
+# ============================================================
+
+if (
+    selected_model in model_paths
+    and hidden_states is not None
+):
+
+    parameter_count = sum(
+        parameter.numel()
+        for parameter in model.parameters()
+    )
+
+    architecture_cols = st.columns(4)
+
+    metric_card(
+        architecture_cols[0],
+        "Input tensor",
+        "1 × 12 × 2",
+        "One sensor sequence",
+    )
+
+    metric_card(
+        architecture_cols[1],
+        "GRU hidden units",
+        "32",
+        "One recurrent layer",
+    )
+
+    metric_card(
+        architecture_cols[2],
+        "Forecast outputs",
+        "3",
+        "15 / 30 / 60 minutes",
+    )
+
+    metric_card(
+        architecture_cols[3],
+        "Trainable parameters",
+        f"{parameter_count:,}",
+        "Selected checkpoint",
+    )
+
+    time_labels = [
+        f"t-{(INPUT_STEPS - 1 - i) * 5} min"
+        for i in range(INPUT_STEPS)
+    ]
+
+    activation_fig = px.imshow(
         hidden_states.T,
-        x=[f"t-{(INPUT_STEPS - 1 - i) * 5}m" for i in range(INPUT_STEPS)],
-        y=[f"Unit {i + 1}" for i in range(hidden_states.shape[1])],
+        x=time_labels,
+        y=[
+            f"Unit {i + 1}"
+            for i in range(hidden_states.shape[1])
+        ],
         aspect="auto",
         origin="lower",
         color_continuous_scale="RdBu_r",
@@ -817,75 +1329,122 @@ if hidden_states is not None:
             "y": "GRU hidden unit",
             "color": "Activation",
         },
-        title="Actual GRU hidden-state activations",
+        title="Actual GRU hidden-state activation matrix",
     )
 
-    heatmap.update_layout(
-        height=420,
-        template="plotly_white",
-        margin=dict(l=15, r=15, t=60, b=15),
+    st.plotly_chart(
+        style_chart(activation_fig, 430),
+        use_container_width=True,
     )
 
-    st.plotly_chart(heatmap, use_container_width=True)
+    final_activation = hidden_states[-1]
+
+    activation_data = pd.DataFrame({
+        "Hidden unit": [
+            f"Unit {i + 1}"
+            for i in range(len(final_activation))
+        ],
+        "Activation": final_activation,
+    })
+
+    activation_bar = px.bar(
+        activation_data,
+        x="Hidden unit",
+        y="Activation",
+        title="Final recurrent state across hidden units",
+        color_discrete_sequence=["#0f766e"],
+    )
+
+    st.plotly_chart(
+        style_chart(activation_bar, 320),
+        use_container_width=True,
+    )
 
     st.caption(
-        "Each cell is an actual hidden-state activation from the selected "
-        "checkpoint. It visualizes internal model values; it is not a causal "
-        "explanation of why the forecast was made."
+        "These are actual hidden-state activations from the selected "
+        "trained GRU. They are diagnostic values, not feature-importance "
+        "scores or causal explanations."
     )
+
 else:
+
     st.info(
-        "Select a trained GRU model to see its actual hidden-state activations. "
-        "The neural-network drawing above is an architectural illustration."
+        "Select a trained GRU model to inspect its actual hidden-state "
+        "activations. The architecture diagram remains visible "
+        "independently."
     )
+
 
 st.divider()
 
 
-# ---------------------------------------------------------
-# Model comparison and federated-learning history
-# ---------------------------------------------------------
+# ============================================================
+# 22. MODEL PERFORMANCE COMPARISON
+# ============================================================
 
-st.markdown("### 📊 How well do the models perform?")
+st.subheader("Model performance comparison")
+
 st.markdown(
-    '<div class="section-intro">'
-    "Compare the saved held-out test results from persistence, centralized "
-    "GRU, and federated GRU."
-    "</div>",
+    """
+    <div class="section-note">
+        Held-out test results for persistence, centralized GRU
+        and federated GRU. Lower MAE and RMSE indicate better forecasts.
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
-comparison = load_csv(COMPARISON_PATH)
+comparison = read_csv(COMPARISON_PATH)
 
-if comparison is not None and not comparison.empty:
+if comparison is None or comparison.empty:
+
+    st.warning(
+        "Comparison results are unavailable. "
+        "Run `python scripts/compare_experiments.py`."
+    )
+
+else:
+
     required_columns = {
-        "Model", "Horizon (minutes)", "MAE", "RMSE", "Valid targets"
+        "Model",
+        "Horizon (minutes)",
+        "MAE",
+        "RMSE",
+        "Valid targets",
     }
 
     missing = required_columns - set(comparison.columns)
 
     if missing:
-        st.warning(
-            f"The comparison CSV is missing columns: {sorted(missing)}"
+
+        st.error(
+            f"Missing comparison columns: {sorted(missing)}"
         )
+
     else:
+
         for column in [
-            "Horizon (minutes)", "MAE", "RMSE", "Valid targets"
+            "Horizon (minutes)",
+            "MAE",
+            "RMSE",
+            "Valid targets",
         ]:
+
             comparison[column] = pd.to_numeric(
-                comparison[column], errors="coerce"
+                comparison[column],
+                errors="coerce",
             )
 
-        metric_choice = st.radio(
-            "Metric",
+        selected_metric = st.radio(
+            "Evaluation metric",
             ["MAE", "RMSE"],
             horizontal=True,
         )
 
-        fig_compare = px.bar(
+        comparison_fig = px.bar(
             comparison,
             x="Horizon (minutes)",
-            y=metric_choice,
+            y=selected_metric,
             color="Model",
             barmode="group",
             text_auto=".3f",
@@ -894,22 +1453,30 @@ if comparison is not None and not comparison.empty:
             },
             labels={
                 "Horizon (minutes)": "Forecast horizon",
-                metric_choice: f"{metric_choice} (dataset speed units)",
+                selected_metric: (
+                    f"{selected_metric} (dataset speed units)"
+                ),
             },
-            title=f"Test-set {metric_choice}: model comparison",
+            title=f"Held-out test {selected_metric} by horizon",
+            color_discrete_sequence=[
+                "#64748b",
+                "#0f766e",
+                "#c0842d",
+            ],
         )
 
-        fig_compare.update_layout(
-            template="plotly_white",
-            height=420,
+        comparison_fig.update_layout(
             xaxis_type="category",
-            hovermode="x unified",
         )
 
-        st.plotly_chart(fig_compare, use_container_width=True)
+        st.plotly_chart(
+            style_chart(comparison_fig, 420),
+            use_container_width=True,
+        )
 
-        columns_to_show = [
-            c for c in [
+        display_columns = [
+            column
+            for column in [
                 "Model",
                 "Horizon (minutes)",
                 "MAE",
@@ -918,39 +1485,138 @@ if comparison is not None and not comparison.empty:
                 "MAE improvement vs persistence (%)",
                 "MAE difference vs centralized (%)",
             ]
-            if c in comparison.columns
+            if column in comparison.columns
         ]
 
         st.dataframe(
-            comparison[columns_to_show].round(3),
+            comparison[display_columns].round(3),
             use_container_width=True,
             hide_index=True,
         )
 
         st.download_button(
-            "Download model comparison",
+            "Download model comparison CSV",
             data=comparison.to_csv(index=False).encode("utf-8"),
             file_name="fedroad_model_comparison.csv",
             mime="text/csv",
         )
-else:
-    st.warning(
-        "No experiment comparison file found. Run "
-        "`python scripts/compare_experiments.py` from the project root."
+
+        # Centralized vs FedAvg comparison
+        central_rows = comparison[
+            comparison["Model"] == "Centralized shared GRU"
+        ]
+
+        fed_rows = comparison[
+            comparison["Model"] == "FedAvg GRU"
+        ]
+
+        if not central_rows.empty and not fed_rows.empty:
+
+            joined = central_rows[
+                ["Horizon (minutes)", "MAE"]
+            ].merge(
+                fed_rows[
+                    ["Horizon (minutes)", "MAE"]
+                ],
+                on="Horizon (minutes)",
+                suffixes=("_central", "_fed"),
+            )
+
+            joined["Gap (%)"] = (
+                (
+                    joined["MAE_fed"]
+                    - joined["MAE_central"]
+                )
+                / joined["MAE_central"]
+            ) * 100
+
+            gap_columns = st.columns(3)
+
+            for index, (_, row) in enumerate(
+                joined.sort_values(
+                    "Horizon (minutes)"
+                ).iterrows()
+            ):
+
+                if index >= 3:
+                    break
+
+                render_html(
+                    gap_columns[index],
+                    f"""
+                    <div class="metric-card">
+
+                        <div class="metric-label">
+                            FedAvg MAE gap ·
+                            {int(row['Horizon (minutes)'])} min
+                        </div>
+
+                        <div class="metric-value">
+                            {row['Gap (%)']:+.2f}%
+                        </div>
+
+                        <div class="metric-description">
+                            Positive means higher error than
+                            centralized GRU.
+                        </div>
+
+                    </div>
+                    """,
+                )
+
+            st.info(
+                "Centralized and federated models used different "
+                "training budgets. This comparison is informative, "
+                "but it is not a perfectly controlled head-to-head experiment."
+            )
+
+
+st.divider()
+
+
+# ============================================================
+# 23. FEDERATED TRAINING PROGRESS
+# ============================================================
+
+st.subheader("Federated training progress")
+
+st.markdown(
+    """
+    <div class="section-note">
+        Training and validation convergence recorded during
+        the Flower FedAvg experiment.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+rounds = read_csv(ROUND_PATH)
+
+if rounds is None or rounds.empty:
+
+    st.info(
+        "Federated round history is unavailable. "
+        "The held-out test comparison remains available above."
     )
 
+else:
 
-# Federated-round history, if available.
-rounds = load_csv(ROUND_PATH)
-
-if rounds is not None and not rounds.empty:
-    needed = {
+    required_round_columns = {
         "round",
         "train_mae_normalized",
         "val_mae_normalized",
     }
 
-    if needed.issubset(rounds.columns):
+    if not required_round_columns.issubset(rounds.columns):
+
+        st.warning(
+            "Federated round CSV does not contain the expected columns."
+        )
+
+    else:
+
+        rounds = rounds.sort_values("round")
+
         round_long = rounds.melt(
             id_vars="round",
             value_vars=[
@@ -962,78 +1628,147 @@ if rounds is not None and not rounds.empty:
         )
 
         round_long["Series"] = round_long["Series"].map({
-            "train_mae_normalized": "Train MAE",
+            "train_mae_normalized": "Training MAE",
             "val_mae_normalized": "Validation MAE",
         })
 
-        fig_rounds = px.line(
+        round_fig = px.line(
             round_long,
             x="round",
             y="Normalized MAE",
             color="Series",
             markers=True,
-            title="Federated learning progress",
+            title="FedAvg convergence across server rounds",
+            color_discrete_sequence=[
+                "#64748b",
+                "#0f766e",
+            ],
         )
 
-        fig_rounds.update_layout(
+        round_fig.update_layout(
             xaxis_title="Federated server round",
-            template="plotly_white",
-            height=360,
+            yaxis_title="Normalized masked MAE",
         )
 
         st.plotly_chart(
-            fig_rounds,
+            style_chart(round_fig, 360),
             use_container_width=True,
         )
-    else:
-        st.caption("Federated-round CSV exists but has an unexpected schema.")
+
+        initial_val = float(
+            rounds["val_mae_normalized"].iloc[0]
+        )
+
+        final_val = float(
+            rounds["val_mae_normalized"].iloc[-1]
+        )
+
+        reduction = (
+            (initial_val - final_val) / initial_val * 100
+            if initial_val > 0
+            else 0.0
+        )
+
+        progress_columns = st.columns(3)
+
+        metric_card(
+            progress_columns[0],
+            "Recorded rounds",
+            int(rounds["round"].nunique()),
+            "Completed Flower rounds",
+        )
+
+        metric_card(
+            progress_columns[1],
+            "Final validation MAE",
+            f"{final_val:.4f}",
+            "Normalized units",
+        )
+
+        metric_card(
+            progress_columns[2],
+            "Validation reduction",
+            f"{reduction:.2f}%",
+            "Round 1 to final round",
+        )
 
 
-# ---------------------------------------------------------
-# Methodology and limitations - still on the same page
-# ---------------------------------------------------------
+st.divider()
 
-with st.expander("How FedRoad works and what its limitations are"):
-    st.markdown(
-        """
-        **Data and preprocessing**
 
-        - Real METR-LA traffic-speed data with 207 sensors and five-minute readings.
-        - The model takes the previous 12 readings, covering 60 minutes.
-        - Unavailable/non-positive readings are masked. Predictions are evaluated
-          only where the future target was observed.
-        - Normalization statistics are fitted on training data, not the test set.
+# ============================================================
+# 24. METHODOLOGY
+# ============================================================
 
-        **Neural network**
+with st.expander("Methodology, model settings and limitations"):
 
-        - The main forecasting model is a PyTorch GRU neural network.
-        - Each sensor's sequence has two features: normalized speed and an
-          observation mask.
-        - The GRU's 32-unit hidden representation feeds a linear layer that
-          predicts three future horizons.
+    col1, col2 = st.columns(2)
 
-        **Federated learning**
+    with col1:
 
-        - Flower simulates four clients with separate sensor partitions.
-        - FedAvg aggregates the local model parameters.
-        - Raw observations are not sent to the coordinator by the training
-          strategy, but the local simulation is not a production privacy guarantee.
-        - This prototype does not implement secure aggregation or differential
-          privacy.
+        st.markdown("### Dataset and preprocessing")
 
-        **Evaluation**
+        st.markdown(
+            f"""
+            - Dataset: **METR-LA**
+            - Observations: **{len(traffic.timestamps):,}**
+            - Sensors: **{len(traffic.sensor_ids)}**
+            - Sampling: **5 minutes**
+            - Input history: **60 minutes**
+            - Unavailable readings: **{traffic.zero_percent:.2f}%**
+            - Chronological split: **70% / 10% / 20%**
+            - Normalization fitted on training data only.
+            - Observation masks retained during training and evaluation.
+            """
+        )
 
-        - MAE and RMSE are reported in the dataset's original speed units.
-        - The displayed observed-future points are from the historical held-out
-          test period. The dashboard does not provide live traffic forecasts.
-        - Centralized and federated runs used different training budgets, so
-          their results should not be treated as a perfectly matched comparison.
-        - The directed graph GRU is a separate experimental extension and should
-          not be described as superior until a full benchmark is complete.
-        """
-    )
+        st.markdown("### Neural network")
+
+        st.markdown(
+            """
+            - Framework: PyTorch
+            - Model: Sensor-level GRU
+            - Input: Speed and observation mask
+            - GRU layers: 1
+            - Hidden units: 32
+            - Output values: 3
+            - Horizons: 15, 30 and 60 minutes
+            """
+        )
+
+    with col2:
+
+        st.markdown("### Federated learning")
+
+        st.markdown(
+            f"""
+            - Framework: Flower
+            - Aggregation: FedAvg
+            - Simulated clients: **{fed_metadata.get('num_clients', 4)}**
+            - Server rounds: **{fed_metadata.get('num_server_rounds', 10)}**
+            - Local epochs: **{fed_metadata.get('local_epochs', 1)}**
+            - Batch size: **{fed_metadata.get('batch_size', 64)}**
+            - Clients train locally; the coordinator aggregates model updates.
+            """
+        )
+
+        st.markdown("### Limitations")
+
+        st.markdown(
+            """
+            - Predictions are based on historical held-out data.
+            - This is not a live traffic service.
+            - Predictions are point estimates, not calibrated intervals.
+            - Clients are simulated in one runtime.
+            - Differential privacy and secure aggregation are not implemented.
+            - Centralized and federated training budgets differ.
+            - The directed graph GRU remains experimental until
+              its full-data benchmark is completed.
+            """
+        )
+
 
 st.caption(
-    "FedRoad · Forecasts are generated from historical METR-LA test windows. "
-    "Model checkpoints must exist locally for neural-network predictions."
+    "FedRoad · Research prototype · "
+    "Historical traffic benchmark, not a live traffic service."
 )
